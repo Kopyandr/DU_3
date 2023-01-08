@@ -1,0 +1,10 @@
+Dokumentace - úkol 3
+
+Program načte z adresáře 2 soubory: kontejnery.geojson a adresy.geojson. Oba vstupní soubory musí být ve formátu geojson.
+Souřadnice adresních bodů v souboru adresy.gejson musí být v S-TJSK a souřadnice kontejnerů v souboru kontejnery.geojson ve souřadnicovém systému WGS. Souřadnice adresních bodů program převede do souřadnic S-JTSK (ve kterém jsou i souřadnice kontejnerů) pro jednodušší výpočet vzdáleností.
+Pro správné fungování programu jsou potřeba atributy:
+@id, addr:housenumber, addr:street ze souboru adresy.geojson
+STATIONNAME, ID, PRISTUP ze souboru kontejnery.geojson
+Dále program přiřadí každému adresnímu bodu vzdálenost k nejbližšímu kontejneru. Těm adresním bodům, které mají vlastní kontejner (jsou přístupné pouze obyvatelům domu a mají stejnou adresu jako adresní bod) je přiřazena vzdálenost 0 metrů.
+Program vypíše průměrnou vzdáleost k nejbližšímu kontejneru, medián těchto vzdáleností a jejich maximum + adresu ke které se maximum vztahuje. 
+Program vytvoří soubor adresy_kontejnery.geojson, kde jsou data z původního souboru s adresami s ID nejbližšího kontejneru.
