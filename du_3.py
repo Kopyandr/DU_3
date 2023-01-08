@@ -1,118 +1,97 @@
 import json
-import json
 from pyproj import Transformer
-from math import sqrt,inf
-import statistics
-import json.decoder
+from math import sqrt, inf
 import sys
-from geojson import dump
+from statistics import mean, median
+import json.decoder
 from json.decoder import JSONDecodeError
-import geopy 
-
-with open("adresy_try1.json", encoding="utf-8") as a:
-    adresy = json.load(a)
-
-with open("kontejnery_try.json", encoding="utf-8") as k:
-    kontejnery = json.load(k)
 
 
-wgs2jtsk = Transformer.from_crs(4326, 5514, always_xy=True)
+try:
+    with open('adresy.geojson', 'r',encoding="UTF-8") as f: # Otevře json 
+        adresy = json.load(f)
 
-max_vzadalenost= 1000
-min_vzdalenost={}
-
-id_adresy_id_kontejneru={}
-
-
-
-def parse_addresa(adresa):
-    ulice_cislo = f"{adresa['properties']['addr:street']} {adresa['properties']['addr:housenumber']}"
-    adresa_x, adresa_y = adresa['geometry']['coordinates']
-    id_adresy = adresa['properties']['@id']
-    return adresa_x, adresa_y, ulice_cislo, id_adresy
-
-
-def parse_kontejner(kontejner):
+    with open('kontejnery.geojson','r',encoding='utf-8') as f: 
+        kontejnery=json.load(f)
+        
+except FileNotFoundError:
+    sys.exit("chybná vstupní data nebo špatný adresář")
+except PermissionError:
+    sys.exit("program nemá právo číst vstupní soubor")
+except JSONDecodeError:
+    sys.exit("vstupní soubor není validní")
+except IOError:
+    sys.exit("vstupní soubor nelze přečíst")
+except:
+    sys.exit("někde se stala chyba")
     
-    id_kontejneru = kontejner['properties']['ID']
-    adresa_kontejneru = str(kontejner['properties']['STATIONNAME'])
-    kontejner_x, kontejner_y = kontejner['geometry']['coordinates']
-    pristup = kontejner['properties']['PRISTUP']
-    return adresa_kontejneru, id_kontejneru, kontejner_x, kontejner_y, pristup
+wgs2jtsk = Transformer.from_crs(4326, 5514, always_xy=True) # transformace WGS souřadnice na S-JTSK souřadnice
 
 
-# uloží potřebné informace o adresách do seznamu n-tic
-parsovane_adresy = [parse_addresa(x) for x in adresy['features']]
-# uloží potřebné informace o kontejnerech do seznamu n-tic
-parsovane_kontejnery = [parse_kontejner(x) for x in kontejnery['features']]
+min_vzdalenost=None # Vzdálenost k nejbližšímu kontejneru 
+list_k_ulozeni=[] #list, který poslouží k převedení do geojsonu 
 
-print (type(parsovane_adresy))
-print(parsovane_adresy[1])
-print (len(parsovane_adresy))
-print(len(parsovane_kontejnery))
+nejblizsi_kontejner=None #sem se bude ukládat id nejbližšího kontejner 
+max_vzdalenost=0
+adresa_nejdale=None 
 
-for adresa_x,adresa_y,ulice_cislo,id_adresy in parsovane_adresy:
-    #print (adresa_x,adresa_y)
-    #print(ulice_cislo)
-    #převedení souřadnic z WGS do JTSK 
-    krovak_x, krovak_y = wgs2jtsk.transform(adresa_x, adresa_y)
-    min_vzdalenost[ulice_cislo]=float("inf")
+LIMIT=10000 #maximalní vzdalenost nejméně vzdaleneho koše 
     
-    for adresa_kontejneru, id_kontejneru, kontejner_x, kontejner_y, pristup in parsovane_kontejnery:
-        
-        if pristup == "obyvatelům domu" and adresa_kontejneru is ulice_cislo:
-           min_vzdalenost[ulice_cislo]=0
-           
-           id_adresy_id_kontejneru[id_adresy]=id_kontejneru
-           break
-           
-        
-        if pristup == "volně":
-            
-            vzdalenost=sqrt((kontejner_x-krovak_x)**2+(kontejner_y-krovak_y)**2)
+  
+for adresa in adresy["features"]: #prochází adresy a získavá potřebné informace (souřadnice atd.)
+    krovak_x = adresa["geometry"]["coordinates"][0]                       
+    krovak_y = adresa["geometry"]["coordinates"][1]
+    krovak = wgs2jtsk.transform(krovak_x,krovak_y)  #převádí souřadnice z WGS84 do SJTSK 
+    street_a_num = f"{adresa['properties']['addr:street']} {adresa['properties']['addr:housenumber']}"
+    adress_id = adresa['properties']['@id']
+   
     
-            #vzdalenost= sqrt(abs(((krovak_x)-(kontejner_x))**2+((krovak_y)-(kontejner_y)**2)
-            
-            #print(krovak_x,adresa_x,krovak_y,adresa_y)
-            if vzdalenost<min_vzdalenost[ulice_cislo]:
-                
-                min_vzdalenost[ulice_cislo]=vzdalenost
-                
-                id_adresy_id_kontejneru[id_adresy]=id_kontejneru 
-                
-    #if min_vzdalenost==max_vzadalenost:
-        #print("Nejbližší popelnice je příliž daleko,nahrajte více kontejnerů")
-
-print(min_vzdalenost)
-print(type(min_vzdalenost))
-
-with open("hotovson.json", "w", encoding="utf-8") as b:
-    json.dump(min_vzdalenost, b) 
-
+    for container in kontejnery['features']: # obdobně prochází kontejnery, kde získává souřadnice a typ přístupu 
+        kontak_x=container['geometry']["coordinates"][0]
+        kontak_y=container['geometry']["coordinates"][1]
+        adresa_kontejneru = str(container['properties']['STATIONNAME'])
+        pristup=container['properties']['PRISTUP']
+        id_kontejneru=container['properties']['ID']
+        #print(id_kontejneru)
         
-#print(min_vzdalenost)
-#print(id_adresy_id_kontejneru)
-            
-            
-            
+        # kontejnery v se stejnou adresou přístupné pouze obyvatelům domu maj vzdálenost 0 
+        if pristup=="obyvatelům domu" and adresa_kontejneru == street_a_num: 
+            min_vzdalenost = 0
+            nejblizsi_kontejner=id_kontejneru
+            break
         
+        if pristup=="volně": # Volně přístupné kontejnery 
+            vzdalenost = float(sqrt((krovak[0]-kontak_x)**2+(krovak[1]-kontak_y)**2)) # spočíta se vzdálenost pomocí pythagorovy věty 
+    
+            if min_vzdalenost is None or min_vzdalenost > vzdalenost:  #Pokud je vzdalenost iterovaného kontejneru menší než byli vzdalenosti doposud, zapíše se 
+                min_vzdalenost=vzdalenost
+                nejblizsi_kontejner=id_kontejneru
+                
+    if min_vzdalenost > LIMIT: # pokud je vzdalenost více než 10 km, program se ukončí 
+        raise Exception("Kontejner je podezřele daleko, nahrajte více bodů")
+    
+                
+    if min_vzdalenost > max_vzdalenost: #zaznamená nejdelší vzdálenost k nejbližšímu kontejneru 
+        max_vzdalenost=min_vzdalenost
+        adresa_nejdale=street_a_num
+        nejvzdalenejsi_kontejner=id_kontejneru
+    
+       
+    adresa["properties"]["k_popelnici"] = round(min_vzdalenost)  #Do slovníku se připíše nový klíč s nejmenší vzdáleností kontaineru               
+    adresa["properties"]["kontejner"] = nejblizsi_kontejner    # nový klíč s ID kontejneru  
+    list_k_ulozeni.append(adresa)        #Přidá danou adresu do seznamu 
             
-            
-        
+    min_vzdalenost=None #Vynuluje se minimalní vzdálenost v iteraci pro práci s další adresou 
+    
+
+#novy soubor s pridanymi idcky a vzdalenostmi k dannému kontejneru               
+with open("adresy_kontejnery.geojson","w", encoding="utf-8") as out:                   
+    json.dump(list_k_ulozeni, out, ensure_ascii = False, indent = 2)
+    
+vzdalenosti = [adresa["properties"]["k_popelnici"] for adresa in adresy["features"]]  # Sem se vypisují vypočítane nejmenší vzdalenosti 
 
 
-
-
-
-
-
-
-#def split_adresy(adresa): 
-
-
-#    ulice_cislo = f"{adresa['properties']['addr:street']} {adresa['properties']['addr:housenumber']}"
-#    adresa_x, adresa_y = adresa['geometry']['coordinates']
-#    id_adresy = adresa['properties']['@id']
-#    return adresa_x,adresa_y = adresa['geometry']['coordinates']
-
+print(f"Prumerna vzdalenost ke kontejnerům je : {round(mean(vzdalenosti))} m")    
+print(f"Median vzdaleností ke kontejnerům je: {round(median(vzdalenosti))} m")
+print(f"Nejdále ke kontejneru je z adresy {adresa_nejdale} a to {round(max_vzdalenost)} m.")
         
